@@ -217,6 +217,13 @@ def file_load(path, docs_all):
         # ファイルの拡張子に合ったdata loaderを使ってデータ読み込み
         loader = ct.SUPPORTED_EXTENSIONS[file_extension](path)
         docs = loader.load()
+        
+        # 👇ページ番号をメタデータに追加（PDF等に対応）
+        for i, doc in enumerate(docs):
+            doc.metadata["page_number"] = i + 1  # 1始まり
+            doc.metadata["source"] = path        # 明示的にファイルパスも設定
+        
+        # 既存のリストに追加
         docs_all.extend(docs)
 
 
