@@ -8,6 +8,7 @@
 from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, TextLoader
 from langchain_community.document_loaders.csv_loader import CSVLoader
 from csv_employee_loader import EmployeeCSVLoader
+import os
 
 
 ############################################################
@@ -66,6 +67,13 @@ WEB_URL_LOAD_TARGETS = [
 NUM_RELATED_DOCUMENTS = 25  # 15 → 25に変更
 CHUNK_SIZE = 500                # チャンク分割時のサイズ（文字数）
 CHUNK_OVERLAP = 50               # チャンク間の重なり部分の文字数
+
+# ベクターストアパスの設定
+VECTORSTORE_PATH = os.path.join(RAG_TOP_FOLDER_PATH, "vectorstore")
+
+# 絶対パスでの設定
+if not os.path.isabs(VECTORSTORE_PATH):
+    VECTORSTORE_PATH = os.path.abspath(VECTORSTORE_PATH)
 
 
 # ==========================================

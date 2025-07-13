@@ -1,34 +1,44 @@
-import streamlit as st
 import shutil
 import os
+import sys
+# streamlitインポートを削除
 
 def force_initialize():
     """強制的に初期化を実行"""
-    print("🔄 強制初期化を開始します...")
     
-    # ベクターストアを削除
-    persist_dir = "./chroma_db"
-    if os.path.exists(persist_dir):
-        try:
-            shutil.rmtree(persist_dir)
-            print("✅ ベクターストアを削除しました")
-        except Exception as e:
-            print(f"⚠️ ベクターストア削除エラー: {e}")
+    # 環境変数設定
+    if not os.getenv("USER_AGENT"):
+        os.environ["USER_AGENT"] = "company-inner-search-app/1.0"
     
-    # セッション状態ファイルがあれば削除
-    session_files = [".streamlit", "__pycache__"]
-    for session_file in session_files:
-        if os.path.exists(session_file):
+    print("=== 強制初期化を開始します ===")
+    
+    # 削除対象のパス一覧（簡素化）
+    paths_to_delete = [
+        "chroma_db",
+        "../data/vectorstore", 
+        "../chroma_db",
+        "__pycache__",
+        ".streamlit"
+    ]
+    
+    deleted_count = 0
+    for path in paths_to_delete:
+        if os.path.exists(path):
             try:
-                if os.path.isdir(session_file):
-                    shutil.rmtree(session_file)
-                else:
-                    os.remove(session_file)
-                print(f"✅ {session_file}を削除しました")
+                shutil.rmtree(path)
+                print(f"[OK] 削除: {path}")
+                deleted_count += 1
             except Exception as e:
-                print(f"⚠️ {session_file}削除エラー: {e}")
+                print(f"[ERROR] 削除失敗: {path} - {e}")
     
-    print("🎉 強制初期化完了！アプリを再起動してください")
+    print(f"=== 削除完了: {deleted_count}件 ===")
+    print("[SUCCESS] 強制初期化完了")
+    return True
 
 if __name__ == "__main__":
-    force_initialize()
+    success = force_initialize()
+    if success:
+        print("*** 強制初期化が正常に完了しました ***")
+    else:
+        print("*** 強制初期化に失敗しました ***")
+        sys.exit(1)

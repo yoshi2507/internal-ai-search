@@ -308,20 +308,39 @@ def adjust_string(s):
 def initialize_rag_system():
     """RAGシステムの初期化"""
     try:
-        logger.info("RAGシステム初期化開始")
+        logger.info("=== RAGシステム初期化開始 ===")
+        logger.info(f"現在のディレクトリ: {os.getcwd()}")
+        logger.info(f"DATA_DIR: {ct.DATA_DIR}")
         
-        # 🔥 重要: srcフォルダ内のデータベースを完全削除
-        src_db_path = os.path.join(os.path.dirname(__file__), "chroma_db")
-        if os.path.exists(src_db_path):
-            shutil.rmtree(src_db_path)
-            logger.info(f"srcフォルダ内のDB削除: {src_db_path}")
+        # 🔥 全てのDB削除（デバッグログ付き）
+        db_paths = [
+            os.path.join(ct.DATA_DIR, "vectorstore"),
+            os.path.join(os.path.dirname(__file__), "chroma_db"),
+            os.path.join(os.path.dirname(__file__), "..", "chroma_db"),
+            "chroma_db",
+            ".chroma"
+        ]
         
-        # ベクターストアのパスを明示的に設定
-        vectorstore_path = os.path.join(ct.DATA_DIR, "vectorstore")
-        
-        # 🔥 CSVローダーを最優先で読み込み
+        for db_path in db_paths:
+            abs_path = os.path.abspath(db_path)
+            logger.info(f"チェック中: {abs_path}")
+            if os.path.exists(abs_path):
+                shutil.rmtree(abs_path)
+                logger.info(f"✅ DB削除: {abs_path}")
+            else:
+                logger.info(f"⏭️ 存在しない: {abs_path}")
+
+        # CSVファイル確認（詳細ログ）
         csv_path = os.path.join(ct.DATA_DIR, "社員について", "社員名簿.csv")
-        if os.path.exists(csv_path):
+        abs_csv_path = os.path.abspath(csv_path)
+        logger.info(f"CSVパス: {abs_csv_path}")
+        logger.info(f"CSVファイル存在: {os.path.exists(abs_csv_path)}")
+        
+        if os.path.exists(abs_csv_path):
+            # ファイルサイズも確認
+            file_size = os.path.getsize(abs_csv_path)
+            logger.info(f"CSVファイルサイズ: {file_size} bytes")
+
             csv_loader = EmployeeCSVLoader(csv_path)
             csv_documents = csv_loader.load()
             logger.info(f"CSV文書数: {len(csv_documents)}")
