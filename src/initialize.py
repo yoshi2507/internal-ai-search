@@ -102,16 +102,49 @@ def initialize_retriever():
     """
     画面読み込み時にRAGのRetriever（ベクターストアから検索するオブジェクト）を作成
     """
-    # ロガーを読み込むことで、後続の処理中に発生したエラーなどがログファイルに記録される
     logger = logging.getLogger(ct.LOGGER_NAME)
+    logger.info("=== Retriever初期化開始 ===")
 
     # すでにRetrieverが作成済みの場合、後続の処理を中断
     if "retriever" in st.session_state:
+        logger.info("Retrieverは既に作成済みです")
         return
     
-    # RAGの参照先となるデータソースの読み込み
-    docs_all = load_data_sources()
+    # 既存のベクターストアを強制削除
+    import shutil
+    persist_dir = "./chroma_db"
+    
+    if os.path.exists(persist_dir):
+        try:
+            shutil.rmtree(persist_dir)
+            logger.info("既存のベクターストアを削除しました")
+        except Exception as e:
+            logger.warning(f"ベクターストア削除エラー（続行します）: {e}")
 
+    # RAGの参照先となるデータソースの読み込み
+    logger.info("データソースの読み込み開始")
+    docs_all = load_data_sources()
+    
+    # 詳細な読み込み結果をログ出力
+    logger.info(f"総読み込みドキュメント数: {len(docs_all)}")
+    
+    # ファイル別の読み込み状況を確認
+    file_counts = {}
+    for doc in docs_all:
+        source = doc.metadata.get("source", "Unknown")
+        file_counts[source] = file_counts.get(source, 0) + 1
+    
+    for file_path, count in file_counts.items():
+        logger.info(f"ファイル読み込み詳細: {file_path} → {count}個のドキュメント")
+    
+    # CSVファイルからの読み込み確認
+    csv_docs = [doc for doc in docs_all if ".csv" in doc.metadata.get("source", "")]
+    logger.info(f"CSVから読み込まれたドキュメント数: {len(csv_docs)}")
+    
+    # 人事部データの存在確認
+    hr_docs = [doc for doc in docs_all if "人事部" in doc.page_content]
+    logger.info(f"人事部を含むドキュメント数: {len(hr_docs)}")
+    
     # OSがWindowsの場合、Unicode正規化と、cp932（Windows用の文字コード）で表現できない文字を除去
     for doc in docs_all:
         doc.page_content = adjust_string(doc.page_content)
@@ -130,12 +163,33 @@ def initialize_retriever():
 
     # チャンク分割を実施
     splitted_docs = text_splitter.split_documents(docs_all)
+    
+    logger.info(f"チャンク分割後のドキュメント数: {len(splitted_docs)}")
 
-    # ベクターストアの作成
-    db = Chroma.from_documents(splitted_docs, embedding=embeddings)
+    # ベクターストアの作成（永続化設定を追加）
+    db = Chroma.from_documents(
+        documents=splitted_docs, 
+        embedding=embeddings,
+        persist_directory=persist_dir
+    )
+    
+    logger.info("新しいベクターストアを作成しました")
 
-    # ベクターストアを検索するRetrieverの作成
+    # ベクターストレージを検索するRetrieverの作成
     st.session_state.retriever = db.as_retriever(search_kwargs={"k": ct.NUM_RELATED_DOCUMENTS})
+    
+    # デバッグ: テスト検索を実行
+    try:
+        test_results = st.session_state.retriever.get_relevant_documents("人事部")
+        logger.info(f"人事部検索結果数: {len(test_results)}")
+        for i, result in enumerate(test_results[:5]):  # 最初の5件を表示
+            source = result.metadata.get('source', 'Unknown')
+            content_preview = result.page_content[:100].replace('\n', ' ')
+            logger.info(f"検索結果{i+1}: {source} - {content_preview}...")
+    except Exception as e:
+        logger.error(f"テスト検索エラー: {e}")
+    
+    logger.info("=== Retriever初期化完了 ===")
 
 
 def initialize_session_state():

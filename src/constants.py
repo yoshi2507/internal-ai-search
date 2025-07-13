@@ -7,6 +7,7 @@
 ############################################################
 from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, TextLoader
 from langchain_community.document_loaders.csv_loader import CSVLoader
+from csv_employee_loader import EmployeeCSVLoader
 
 
 ############################################################
@@ -46,11 +47,11 @@ TEMPERATURE = 0.5
 # ==========================================
 # RAG参照用のデータソース系
 # ==========================================
-RAG_TOP_FOLDER_PATH = "./data"
+RAG_TOP_FOLDER_PATH = "../data"  # "./data" から "../data" に修正
 SUPPORTED_EXTENSIONS = {
     ".pdf": PyMuPDFLoader,
     ".docx": Docx2txtLoader,
-    ".csv": lambda path: CSVLoader(path, encoding="utf-8"),
+    ".csv": lambda path: EmployeeCSVLoader(path),
     ".txt": lambda path: TextLoader(path, encoding="utf-8") 
 }
 WEB_URL_LOAD_TARGETS = [
@@ -60,7 +61,9 @@ WEB_URL_LOAD_TARGETS = [
 # ==========================================
 # RAG設定系（ベクターストア、チャンク関連）
 # ==========================================
-NUM_RELATED_DOCUMENTS = 5        # プロンプトに埋め込む関連ドキュメントの数
+# ベクターストアから取得する関連ドキュメント数（k値）
+# 🔥 修正: 人事部検索で確実に全員を取得するため増加
+NUM_RELATED_DOCUMENTS = 25  # 15 → 25に変更
 CHUNK_SIZE = 500                # チャンク分割時のサイズ（文字数）
 CHUNK_OVERLAP = 50               # チャンク間の重なり部分の文字数
 
@@ -94,7 +97,10 @@ SYSTEM_PROMPT_INQUIRY = """
     5. マークダウン記法で回答する際にhタグの見出しを使う場合、最も大きい見出しをh3としてください。
     6. 複雑な質問の場合、各項目についてそれぞれ詳細に回答してください。
     7. 必要と判断した場合は、以下の文脈に基づかずとも、一般的な情報を回答してください。
+    8. 特定の部署の従業員情報を求められた場合は、その部署に所属する人のみを対象として回答してください。
+    9. 従業員一覧を作成する際は、表形式で整理して見やすく表示してください。
 
+    【文脈】
     {context}
 """
 
