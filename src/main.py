@@ -125,8 +125,15 @@ if chat_message:
     logger.info({"message": chat_message, "application_mode": st.session_state.mode})
 
     # ユーザーメッセージを表示
-    with st.chat_message("user"):
-        st.markdown(chat_message)
+    st.markdown(
+    f"""
+    <div style="background-color:#f1f3f6; padding: 15px; border-radius: 8px;
+                max-width: 680px; margin-bottom: 5px;">
+        <span style="font-size: 15px; color: #333333;">{chat_message}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
     # ==========================================
     # 8-2. LLMからの回答取得

@@ -86,20 +86,25 @@ def display_initial_ai_message():
 
 def display_conversation_log():
     """
-    会話ログの一覧表示（ユーザー発言もchat_messageで表示する構成）
+    会話ログの一覧表示
     """
     for message in st.session_state.messages:
-        # 「message」辞書の中の「role」キーには「user」か「assistant」が入っている
 
+        # ユーザー発言だけHTMLで装飾し、chat_messageを使わない
         if message["role"] == "user":
-            # ✅ Streamlit標準のチャット形式（アイコン付き）
-            with st.chat_message("user"):
-                st.markdown(message["content"])
+            st.markdown(
+                f"""
+                <div style="background-color:#f1f3f6; padding: 15px; border-radius: 8px;
+                            margin-left: 56px; max-width: 680px; margin-bottom: 5px;">
+                    <span style="font-size: 15px; color: #333333;">{message["content"]}</span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
+        # assistantやsystemの場合は chat_message を使って表示
         else:
-            # LLM（assistant）側のメッセージ（従来通り）
             with st.chat_message(message["role"]):
-
                 if message["content"]["mode"] == ct.ANSWER_MODE_1:
                     if not "no_file_path_flg" in message["content"]:
                         st.markdown(message["content"]["main_message"])
@@ -129,7 +134,6 @@ def display_conversation_log():
                         for file_info in message["content"]["file_info_list"]:
                             icon = utils.get_source_icon(file_info)
                             st.info(file_info, icon=icon)
-
 
 
 def display_search_llm_response(llm_response):
