@@ -5,20 +5,22 @@
 ############################################################
 # ライブラリの読み込み
 ############################################################
+from logging.handlers import TimedRotatingFileHandler
 import os
 import logging
-from logging.handlers import TimedRotatingFileHandler
+import shutil
 from uuid import uuid4
 import sys
 import unicodedata
 from dotenv import load_dotenv
+from langchain_openai import OpenAIEmbeddings
 import streamlit as st
 from docx import Document
 from langchain_community.document_loaders import WebBaseLoader
-from langchain.text_splitter import CharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 import constants as ct
+from csv_employee_loader import EmployeeCSVLoader
 
 
 ############################################################
@@ -149,82 +151,72 @@ def initialize_session_state():
         st.session_state.chat_history = []
 
 
+def get_loader(file_path, ext):
+    """拡張子に応じた適切なローダーを取得する"""
+    if ext == ".csv":
+        return EmployeeCSVLoader(file_path, encoding="utf-8")
+    
+    loader_class = ct.SUPPORTED_EXTENSIONS.get(ext)
+    if loader_class:
+        # TextLoaderの場合、エンコーディングを指定
+        if loader_class == TextLoader:
+            return loader_class(file_path, encoding="utf-8")
+        return loader_class(file_path)
+    
+    return None
+
+
+def load_documents_from_path(path):
+    """指定されたパスからドキュメントを再帰的に読み込む"""
+    documents = []
+    logger = logging.getLogger(ct.LOGGER_NAME)
+    logger.info(f"データソース探索開始: {path}")
+    
+    for root, _, files in os.walk(path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            file_ext = os.path.splitext(file)[1].lower()
+            
+            loader = get_loader(file_path, file_ext)
+            if loader:
+                try:
+                    docs = loader.load()
+                    documents.extend(docs)
+                    logger.info(f"読み込み成功: {file_path} ({len(docs)}件)")
+                except Exception as e:
+                    logger.error(f"読み込み失敗: {file_path}, エラー: {e}")
+    return documents
+
+
 def load_data_sources():
     """
     RAGの参照先となるデータソースの読み込み
-
-    Returns:
-        読み込んだ通常データソース
     """
-    # データソースを格納する用のリスト
-    docs_all = []
-    # ファイル読み込みの実行（渡した各リストにデータが格納される）
-    recursive_file_check(ct.RAG_TOP_FOLDER_PATH, docs_all)
+    logger = logging.getLogger(ct.LOGGER_NAME)
+    
+    # 1. ファイルベースのドキュメントを読み込む
+    docs_all = load_documents_from_path(ct.RAG_TOP_FOLDER_PATH)
 
+    # 2. Webベースのドキュメントを読み込む
     web_docs_all = []
-    # ファイルとは別に、指定のWebページ内のデータも読み込み
-    # 読み込み対象のWebページ一覧に対して処理
-    for web_url in ct.WEB_URL_LOAD_TARGETS:
-        # 指定のWebページを読み込み
-        loader = WebBaseLoader(web_url)
-        web_docs = loader.load()
-        # for文の外のリストに読み込んだデータソースを追加
-        web_docs_all.extend(web_docs)
-    # 通常読み込みのデータソースにWebページのデータを追加
+    if hasattr(ct, 'WEB_URL_LOAD_TARGETS') and ct.WEB_URL_LOAD_TARGETS:
+        logger.info(f"Web読み込み開始: {len(ct.WEB_URL_LOAD_TARGETS)}件のURL")
+        for web_url in ct.WEB_URL_LOAD_TARGETS:
+            try:
+                loader = WebBaseLoader(web_url)
+                web_docs = loader.load()
+                web_docs_all.extend(web_docs)
+                logger.info(f"Web読み込み成功: {web_url}")
+            except Exception as e:
+                logger.error(f"Web読み込みエラー {web_url}: {e}")
+    else:
+        logger.info("WEB_URL_LOAD_TARGETSが未設定または空のため、Web読み込みをスキップ")
+    
+    # ファイルとWebのドキュメントを結合
     docs_all.extend(web_docs_all)
+    logger.info(f"総読み込み完了: 合計{len(docs_all)}件のドキュメント")
 
     return docs_all
-
-
-def recursive_file_check(path, docs_all):
-    """
-    RAGの参照先となるデータソースの読み込み
-
-    Args:
-        path: 読み込み対象のファイル/フォルダのパス
-        docs_all: データソースを格納する用のリスト
-    """
-    # パスがフォルダかどうかを確認
-    if os.path.isdir(path):
-        # フォルダの場合、フォルダ内のファイル/フォルダ名の一覧を取得
-        files = os.listdir(path)
-        # 各ファイル/フォルダに対して処理
-        for file in files:
-            # ファイル/フォルダ名だけでなく、フルパスを取得
-            full_path = os.path.join(path, file)
-            # フルパスを渡し、再帰的にファイル読み込みの関数を実行
-            recursive_file_check(full_path, docs_all)
-    else:
-        # パスがファイルの場合、ファイル読み込み
-        file_load(path, docs_all)
-
-
-def file_load(path, docs_all):
-    """
-    ファイル内のデータ読み込み
-
-    Args:
-        path: ファイルパス
-        docs_all: データソースを格納する用のリスト
-    """
-    # ファイルの拡張子を取得
-    file_extension = os.path.splitext(path)[1]
-    # ファイル名（拡張子を含む）を取得
-    file_name = os.path.basename(path)
-
-    # 想定していたファイル形式の場合のみ読み込む
-    if file_extension in ct.SUPPORTED_EXTENSIONS:
-        # ファイルの拡張子に合ったdata loaderを使ってデータ読み込み
-        loader = ct.SUPPORTED_EXTENSIONS[file_extension](path)
-        docs = loader.load()
-        
-        # 👇ページ番号をメタデータに追加（PDF等に対応）
-        for i, doc in enumerate(docs):
-            doc.metadata["page_number"] = i + 1  # 1始まり
-            doc.metadata["source"] = path        # 明示的にファイルパスも設定
-        
-        # 既存のリストに追加
-        docs_all.extend(docs)
 
 
 def adjust_string(s):
