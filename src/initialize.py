@@ -303,3 +303,92 @@ def adjust_string(s):
     
     # OSがWindows以外の場合はそのまま返す
     return s
+
+
+def initialize_rag_system():
+    """RAGシステムの初期化"""
+    try:
+        logger.info("RAGシステム初期化開始")
+        
+        # 🔥 重要: srcフォルダ内のデータベースを完全削除
+        src_db_path = os.path.join(os.path.dirname(__file__), "chroma_db")
+        if os.path.exists(src_db_path):
+            shutil.rmtree(src_db_path)
+            logger.info(f"srcフォルダ内のDB削除: {src_db_path}")
+        
+        # ベクターストアのパスを明示的に設定
+        vectorstore_path = os.path.join(ct.DATA_DIR, "vectorstore")
+        
+        # 🔥 CSVローダーを最優先で読み込み
+        csv_path = os.path.join(ct.DATA_DIR, "社員について", "社員名簿.csv")
+        if os.path.exists(csv_path):
+            csv_loader = EmployeeCSVLoader(csv_path)
+            csv_documents = csv_loader.load()
+            logger.info(f"CSV文書数: {len(csv_documents)}")
+            
+            # CSV文書を最初に追加
+            all_documents = csv_documents
+        else:
+            logger.error(f"CSVファイルが見つかりません: {csv_path}")
+            all_documents = []
+
+        # その他のデータソースの読み込み
+        docs_all = load_data_sources()
+        all_documents.extend(docs_all)
+
+        # 詳細な読み込み結果をログ出力
+        logger.info(f"総読み込みドキュメント数: {len(all_documents)}")
+        
+        # ファイル別の読み込み状況を確認
+        file_counts = {}
+        for doc in all_documents:
+            source = doc.metadata.get("source", "Unknown")
+            file_counts[source] = file_counts.get(source, 0) + 1
+        
+        for file_path, count in file_counts.items():
+            logger.info(f"ファイル読み込み詳細: {file_path} → {count}個のドキュメント")
+        
+        # CSVファイルからの読み込み確認
+        csv_docs = [doc for doc in all_documents if ".csv" in doc.metadata.get("source", "")]
+        logger.info(f"CSVから読み込まれたドキュメント数: {len(csv_docs)}")
+        
+        # 人事部データの存在確認
+        hr_docs = [doc for doc in all_documents if "人事部" in doc.page_content]
+        logger.info(f"人事部を含むドキュメント数: {len(hr_docs)}")
+        
+        # OSがWindowsの場合、Unicode正規化と、cp932（Windows用の文字コード）で表現できない文字を除去
+        for doc in all_documents:
+            doc.page_content = adjust_string(doc.page_content)
+            for key in doc.metadata:
+                doc.metadata[key] = adjust_string(doc.metadata[key])
+        
+        # 埋め込みモデルの用意
+        embeddings = OpenAIEmbeddings()
+        
+        # チャンク分割用のオブジェクトを作成
+        text_splitter = CharacterTextSplitter(
+            chunk_size=ct.CHUNK_SIZE,
+            chunk_overlap=ct.CHUNK_OVERLAP,
+            separator="\n"
+        )
+
+        # チャンク分割を実施
+        splitted_docs = text_splitter.split_documents(all_documents)
+        
+        logger.info(f"チャンク分割後のドキュメント数: {len(splitted_docs)}")
+
+        # ベクターストアの作成（永続化設定を追加）
+        db = Chroma.from_documents(
+            documents=splitted_docs, 
+            embedding=embeddings,
+            persist_directory=src_db_path
+        )
+        
+        logger.info("新しいベクターストアを作成しました")
+
+        # ベクターストレージを検索するRetrieverの作成
+        st.session_state.retriever = db.as_retriever(search_kwargs={"k": ct.NUM_RELATED_DOCUMENTS})
+        
+        logger.info("RAGシステム初期化完了")
+    except Exception as e:
+        logger.error(f"RAGシステム初期化エラー: {e}")
