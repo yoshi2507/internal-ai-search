@@ -58,6 +58,12 @@ def build_error_message(message):
     """
     return "\n".join([message, ct.COMMON_ERROR_MESSAGE])
 
+def is_employee_query(chat_message):
+    """
+    入力が社員情報に関する質問かどうかを判定（簡易的なキーワードマッチ）
+    """
+    keywords = ["社員", "従業員", "人事", "所属", "部署"]
+    return any(keyword in chat_message for keyword in keywords)
 
 def get_llm_response(chat_message):
     """
@@ -98,9 +104,14 @@ def get_llm_response(chat_message):
         ]
     )
 
-    # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのRetrieverを作成
+    # ✅ retriever を質問内容によって切り替える
+    if is_employee_query(chat_message):
+        retriever = st.session_state.employee_retriever
+    else:
+        retriever = st.session_state.full_retriever
+    # retriever に基づいて chain を構築
     history_aware_retriever = create_history_aware_retriever(
-        llm, st.session_state.retriever, question_generator_prompt
+        llm, retriever, question_generator_prompt
     )
 
     # LLMから回答を取得する用のChainを作成

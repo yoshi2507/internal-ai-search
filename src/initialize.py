@@ -22,6 +22,7 @@ from langchain_community.vectorstores import Chroma
 import constants as ct
 from csv_employee_loader import EmployeeCSVLoader
 from langchain_community.document_loaders import TextLoader
+from langchain_community.document_loaders.csv_loader import CSVLoader
 
 ############################################################
 # 設定関連
@@ -44,8 +45,8 @@ def initialize():
     initialize_session_id()
     # ログ出力の設定
     initialize_logger()
-    # RAGのRetrieverを作成
-    initialize_retriever()
+    # RAGのRetrieverを作成 （retriever構築を切り出し）
+    initialize_all_retrievers()
 
 
 def initialize_logger():
@@ -100,44 +101,35 @@ def initialize_session_id():
         st.session_state.session_id = uuid4().hex
 
 
-def initialize_retriever():
+def initialize_all_retrievers():
     """
-    画面読み込み時にRAGのRetriever（ベクターストアから検索するオブジェクト）を作成
+    社員名簿用と全体用の retriever を構築
     """
-    # ロガーを読み込むことで、後続の処理中に発生したエラーなどがログファイルに記録される
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    # すでにRetrieverが作成済みの場合、後続の処理を中断
-    if "retriever" in st.session_state:
+    # すでに retriever がある場合はスキップ
+    if "employee_retriever" in st.session_state and "full_retriever" in st.session_state:
         return
-    
-    # RAGの参照先となるデータソースの読み込み
-    docs_all = load_data_sources()
 
-    # OSがWindowsの場合、Unicode正規化と、cp932（Windows用の文字コード）で表現できない文字を除去
-    for doc in docs_all:
-        doc.page_content = adjust_string(doc.page_content)
-        for key in doc.metadata:
-            doc.metadata[key] = adjust_string(doc.metadata[key])
-    
-    # 埋め込みモデルの用意
     embeddings = OpenAIEmbeddings()
-    
-    # チャンク分割用のオブジェクトを作成
     text_splitter = CharacterTextSplitter(
         chunk_size=ct.CHUNK_SIZE,
         chunk_overlap=ct.CHUNK_OVERLAP,
         separator="\n"
     )
 
-    # チャンク分割を実施
-    splitted_docs = text_splitter.split_documents(docs_all)
+    # 🔹 社員名簿 retriever（分割しない）
+    employee_csv_path = os.path.join(ct.RAG_TOP_FOLDER_PATH, "社員について", "社員名簿.csv")
+    csv_loader = CSVLoader(file_path=employee_csv_path, encoding="utf-8")
+    employee_docs = csv_loader.load()
+    employee_db = Chroma.from_documents(employee_docs, embedding=embeddings)
+    st.session_state.employee_retriever = employee_db.as_retriever(search_kwargs={"k": ct.NUM_RELATED_DOCUMENTS})
 
-    # ベクターストアの作成
-    db = Chroma.from_documents(splitted_docs, embedding=embeddings)
-
-    # ベクターストアを検索するRetrieverの作成
-    st.session_state.retriever = db.as_retriever(search_kwargs={"k": ct.NUM_RELATED_DOCUMENTS})
+    # 🔸 全体 retriever（従来通り分割あり）
+    full_docs = load_data_sources()
+    splitted_docs = text_splitter.split_documents(full_docs)
+    full_db = Chroma.from_documents(splitted_docs, embedding=embeddings)
+    st.session_state.full_retriever = full_db.as_retriever(search_kwargs={"k": ct.NUM_RELATED_DOCUMENTS})
 
 
 def initialize_session_state():
