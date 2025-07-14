@@ -21,7 +21,7 @@ from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTe
 from langchain_community.vectorstores import Chroma
 import constants as ct
 from csv_employee_loader import EmployeeCSVLoader
-
+from langchain_community.document_loaders import TextLoader
 
 ############################################################
 # 設定関連
