@@ -23,7 +23,11 @@ import constants as ct
 from csv_employee_loader import EmployeeCSVLoader
 from langchain_community.document_loaders import TextLoader
 from langchain_community.document_loaders.csv_loader import CSVLoader
-
+from langchain_core.documents import Document
+import csv
+from langchain_core.documents import Document
+import csv
+import glob
 ############################################################
 # 設定関連
 ############################################################
@@ -107,7 +111,6 @@ def initialize_all_retrievers():
     """
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    # すでに retriever がある場合はスキップ
     if "employee_retriever" in st.session_state and "full_retriever" in st.session_state:
         return
 
@@ -118,18 +121,68 @@ def initialize_all_retrievers():
         separator="\n"
     )
 
-    # 🔹 社員名簿 retriever（分割しない）
-    employee_csv_path = os.path.join(ct.RAG_TOP_FOLDER_PATH, "社員について", "社員名簿.csv")
-    csv_loader = CSVLoader(file_path=employee_csv_path, encoding="utf-8")
+    # 🔹 社員名簿 retriever（分割しない＋ファイル名自動検出＋メタデータでフィルタリング）
+    employee_folder_path = os.path.join(ct.RAG_TOP_FOLDER_PATH, "社員について")
+    csv_files = glob.glob(os.path.join(employee_folder_path, "*.csv"))
+
+    if not csv_files:
+        raise FileNotFoundError("社員名簿のCSVファイルが見つかりませんでした。")
+
+    employee_csv_path = csv_files[0]
+    csv_loader = EmployeeCSVLoader(file_path=employee_csv_path, encoding="utf-8-sig")
     employee_docs = csv_loader.load()
-    employee_db = Chroma.from_documents(employee_docs, embedding=embeddings)
-    st.session_state.employee_retriever = employee_db.as_retriever(search_kwargs={"k": ct.NUM_RELATED_DOCUMENTS})
+    print("[DEBUG] 社員ドキュメント数（summary含む）:", len(employee_docs))
+    employee_count = 0
+    found_hayashi = False
+    departments = set()
+    print("\n[DEBUG] 社員一覧（部署と名前）:")
+    for doc in employee_docs:
+        if doc.metadata.get("type") != "employee":
+            continue  # summaryドキュメントは除外
+
+        employee_count += 1
+        content = doc.page_content
+        dept = doc.metadata.get("department", "")
+        departments.add(dept)
+
+        print(f"- 部署: {dept} / 内容: {content[:40]}...")  # 短く切って表示
+        
+        if "林" in content and "千代" in content:
+            found_hayashi = True
+            print("✅ 林 千代さんのレコードを検出しました！")
+
+    print(f"\n[DEBUG] 登録された社員数（summary除く）: {employee_count}")
+    print(f"[DEBUG] 登録された部署一覧: {sorted(departments)}")
+
+    if not found_hayashi:
+        print("❌ 林 千代さんのレコードは employee_docs に見つかりませんでした。")
+
+    for doc in employee_docs:
+        doc.metadata["category"] = "employee"
+
+    employee_db = Chroma.from_documents(
+        documents=employee_docs,
+        embedding=embeddings,
+        collection_metadata={"category": "employee"}
+    )
+
+    st.session_state.employee_retriever = employee_db.as_retriever(
+        search_kwargs={
+            "k": 100,
+            "filter": {"category": "employee"}
+        }
+    )
 
     # 🔸 全体 retriever（従来通り分割あり）
     full_docs = load_data_sources()
     splitted_docs = text_splitter.split_documents(full_docs)
     full_db = Chroma.from_documents(splitted_docs, embedding=embeddings)
     st.session_state.full_retriever = full_db.as_retriever(search_kwargs={"k": ct.NUM_RELATED_DOCUMENTS})
+
+    # ✅ デバッグ用（削除してもOK）
+    for doc in employee_docs:
+        print("----")
+        print(doc.page_content)
 
 
 def initialize_session_state():
@@ -146,7 +199,7 @@ def initialize_session_state():
 def get_loader(file_path, ext):
     """拡張子に応じた適切なローダーを取得する"""
     if ext == ".csv":
-        return EmployeeCSVLoader(file_path, encoding="utf-8")
+        return EmployeeCSVLoader(file_path, encoding="utf-8-sig")
     
     loader_class = ct.SUPPORTED_EXTENSIONS.get(ext)
     if loader_class:

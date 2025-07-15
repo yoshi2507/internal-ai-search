@@ -39,8 +39,8 @@ logger = logging.getLogger(ct.LOGGER_NAME)
 try:
     # 初期化処理（「initialize.py」の「initialize」関数を実行）
     initialize()
-    st.write("employee_retriever" in st.session_state)
-    st.write("full_retriever" in st.session_state)
+    # st.write("employee_retriever" in st.session_state)
+    # st.write("full_retriever" in st.session_state)
 except Exception as e:
     # エラーログの出力
     logger.error(f"{ct.INITIALIZE_ERROR_MESSAGE}\n{e}")

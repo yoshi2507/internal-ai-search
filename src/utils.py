@@ -26,6 +26,21 @@ load_dotenv()
 ############################################################
 # 関数定義
 ############################################################
+def extract_department_name(chat_message):
+    """
+    ユーザー入力に含まれる部署名を抽出する（簡易キーワード一致）
+
+    Args:
+        chat_message: ユーザー入力メッセージ
+
+    Returns:
+        部署名（例：「人事部」）または None
+    """
+    departments = ["人事部", "営業部", "IT部", "マーケティング部", "経理部", "総務部"]
+    for dept in departments:
+        if dept in chat_message:
+            return dept
+    return None
 
 def get_source_icon(source):
     """
@@ -62,7 +77,10 @@ def is_employee_query(chat_message):
     """
     入力が社員情報に関する質問かどうかを判定（簡易的なキーワードマッチ）
     """
-    keywords = ["社員", "従業員", "人事", "所属", "部署"]
+    keywords = [
+        "社員", "従業員", "人事", "所属", "部署",
+        "メンバー", "一覧", "スタッフ", "人員"
+    ]
     return any(keyword in chat_message for keyword in keywords)
 
 def get_llm_response(chat_message):
@@ -106,9 +124,22 @@ def get_llm_response(chat_message):
 
     # ✅ retriever を質問内容によって切り替える
     if is_employee_query(chat_message):
-        retriever = st.session_state.employee_retriever
+        department = extract_department_name(chat_message)
+        if department:
+            retriever = st.session_state.employee_retriever
+            retriever.search_kwargs["filter"] = {
+                "$and": [
+                    {"category": "employee"},
+                    {"department": department}
+                ]
+            }
+        else:
+            retriever = st.session_state.employee_retriever
     else:
         retriever = st.session_state.full_retriever
+
+
+        
     # retriever に基づいて chain を構築
     history_aware_retriever = create_history_aware_retriever(
         llm, retriever, question_generator_prompt
