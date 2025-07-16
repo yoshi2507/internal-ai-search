@@ -1,4 +1,4 @@
-from components import compare_files_with_vectorstore
+from retriever_modules import compare_files_with_vectorstore
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
 import constants as ct

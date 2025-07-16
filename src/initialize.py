@@ -6,11 +6,13 @@
 # ライブラリの読み込み
 ############################################################
 from logging.handlers import TimedRotatingFileHandler
-import os
 import logging
 import shutil
 from uuid import uuid4
 import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
+from retriever_modules.retriever_factory import build_employee_retriever
 import unicodedata
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
@@ -28,6 +30,7 @@ import csv
 from langchain_core.documents import Document
 import csv
 import glob
+
 ############################################################
 # 設定関連
 ############################################################
@@ -160,18 +163,12 @@ def initialize_all_retrievers():
     for doc in employee_docs:
         doc.metadata["category"] = "employee"
 
-    employee_db = Chroma.from_documents(
-        documents=employee_docs,
-        embedding=embeddings,
-        collection_metadata={"category": "employee"}
-    )
-
-    st.session_state.employee_retriever = employee_db.as_retriever(
-        search_kwargs={
-            "k": 100,
-            "filter": {"category": "employee"}
-        }
-    )
+    st.session_state.employee_retriever = build_employee_retriever(
+    docs=employee_docs,
+    embeddings=embeddings,
+    filter_conditions={"category": "employee"},
+    k=100
+)
 
     # 🔸 全体 retriever（従来通り分割あり）
     full_docs = load_data_sources()
