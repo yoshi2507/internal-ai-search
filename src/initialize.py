@@ -110,6 +110,7 @@ def initialize_all_retrievers():
     社員名簿用と全体用の retriever を構築
     """
     logger = logging.getLogger(ct.LOGGER_NAME)
+    logger.info("=== Retriever初期化開始 ===")
 
     if "employee_retriever" in st.session_state and "full_retriever" in st.session_state:
         return
@@ -286,3 +287,111 @@ def adjust_string(s):
     
     # OSがWindows以外の場合はそのまま返す
     return s
+
+
+def initialize_rag_system():
+    """RAGシステムの初期化"""
+    try:
+        logger.info("=== RAGシステム初期化開始 ===")
+        logger.info(f"現在のディレクトリ: {os.getcwd()}")
+        logger.info(f"DATA_DIR: {ct.DATA_DIR}")
+        
+        # 🔥 全てのDB削除（デバッグログ付き）
+        db_paths = [
+            os.path.join(ct.DATA_DIR, "vectorstore"),
+            os.path.join(os.path.dirname(__file__), "chroma_db"),
+            os.path.join(os.path.dirname(__file__), "..", "chroma_db"),
+            "chroma_db",
+            ".chroma"
+        ]
+        
+        for db_path in db_paths:
+            abs_path = os.path.abspath(db_path)
+            logger.info(f"チェック中: {abs_path}")
+            if os.path.exists(abs_path):
+                shutil.rmtree(abs_path)
+                logger.info(f"✅ DB削除: {abs_path}")
+            else:
+                logger.info(f"⏭️ 存在しない: {abs_path}")
+
+        # CSVファイル確認（詳細ログ）
+        csv_path = os.path.join(ct.DATA_DIR, "社員について", "社員名簿.csv")
+        abs_csv_path = os.path.abspath(csv_path)
+        logger.info(f"CSVパス: {abs_csv_path}")
+        logger.info(f"CSVファイル存在: {os.path.exists(abs_csv_path)}")
+        
+        if os.path.exists(abs_csv_path):
+            # ファイルサイズも確認
+            file_size = os.path.getsize(abs_csv_path)
+            logger.info(f"CSVファイルサイズ: {file_size} bytes")
+
+            csv_loader = EmployeeCSVLoader(csv_path)
+            csv_documents = csv_loader.load()
+            logger.info(f"CSV文書数: {len(csv_documents)}")
+            
+            # CSV文書を最初に追加
+            all_documents = csv_documents
+        else:
+            logger.error(f"CSVファイルが見つかりません: {csv_path}")
+            all_documents = []
+
+        # その他のデータソースの読み込み
+        docs_all = load_data_sources()
+        all_documents.extend(docs_all)
+
+        # 詳細な読み込み結果をログ出力
+        logger.info(f"総読み込みドキュメント数: {len(all_documents)}")
+        
+        # ファイル別の読み込み状況を確認
+        file_counts = {}
+        for doc in all_documents:
+            source = doc.metadata.get("source", "Unknown")
+            file_counts[source] = file_counts.get(source, 0) + 1
+        
+        for file_path, count in file_counts.items():
+            logger.info(f"ファイル読み込み詳細: {file_path} → {count}個のドキュメント")
+        
+        # CSVファイルからの読み込み確認
+        csv_docs = [doc for doc in all_documents if ".csv" in doc.metadata.get("source", "")]
+        logger.info(f"CSVから読み込まれたドキュメント数: {len(csv_docs)}")
+        
+        # 人事部データの存在確認
+        hr_docs = [doc for doc in all_documents if "人事部" in doc.page_content]
+        logger.info(f"人事部を含むドキュメント数: {len(hr_docs)}")
+        
+        # OSがWindowsの場合、Unicode正規化と、cp932（Windows用の文字コード）で表現できない文字を除去
+        for doc in all_documents:
+            doc.page_content = adjust_string(doc.page_content)
+            for key in doc.metadata:
+                doc.metadata[key] = adjust_string(doc.metadata[key])
+        
+        # 埋め込みモデルの用意
+        embeddings = OpenAIEmbeddings()
+        
+        # チャンク分割用のオブジェクトを作成
+        text_splitter = CharacterTextSplitter(
+            chunk_size=ct.CHUNK_SIZE,
+            chunk_overlap=ct.CHUNK_OVERLAP,
+            separator="\n"
+        )
+
+        # チャンク分割を実施
+        splitted_docs = text_splitter.split_documents(all_documents)
+        
+        logger.info(f"チャンク分割後のドキュメント数: {len(splitted_docs)}")
+
+        # ベクターストアの作成（永続化設定を追加）
+        db = Chroma.from_documents(
+            documents=splitted_docs, 
+            embedding=embeddings,
+            persist_directory=src_db_path
+        )
+        
+        logger.info("新しいベクターストアを作成しました")
+
+        # ベクターストレージを検索するRetrieverの作成
+        st.session_state.retriever = db.as_retriever(search_kwargs={"k": ct.NUM_RELATED_DOCUMENTS})
+        
+        logger.info("RAGシステム初期化完了")
+    except Exception as e:
+        logger.error(f"RAGシステム初期化エラー: {e}")

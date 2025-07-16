@@ -7,6 +7,8 @@
 ############################################################
 from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, TextLoader
 from langchain_community.document_loaders.csv_loader import CSVLoader
+from csv_employee_loader import EmployeeCSVLoader
+import os
 
 
 ############################################################
@@ -46,7 +48,7 @@ TEMPERATURE = 0.5
 # ==========================================
 # RAG参照用のデータソース系
 # ==========================================
-RAG_TOP_FOLDER_PATH = "./data"
+RAG_TOP_FOLDER_PATH = "../data"  # "./data" から "../data" に修正
 SUPPORTED_EXTENSIONS = {
     ".pdf": PyMuPDFLoader,
     ".docx": Docx2txtLoader,
@@ -60,9 +62,18 @@ WEB_URL_LOAD_TARGETS = [
 # ==========================================
 # RAG設定系（ベクターストア、チャンク関連）
 # ==========================================
-NUM_RELATED_DOCUMENTS = 5        # プロンプトに埋め込む関連ドキュメントの数
+# ベクターストアから取得する関連ドキュメント数（k値）
+# 🔥 修正: 人事部検索で確実に全員を取得するため増加
+NUM_RELATED_DOCUMENTS = 25  # 15 → 25に変更
 CHUNK_SIZE = 500                # チャンク分割時のサイズ（文字数）
 CHUNK_OVERLAP = 50               # チャンク間の重なり部分の文字数
+
+# ベクターストアパスの設定
+VECTORSTORE_PATH = os.path.join(RAG_TOP_FOLDER_PATH, "vectorstore")
+
+# 絶対パスでの設定
+if not os.path.isabs(VECTORSTORE_PATH):
+    VECTORSTORE_PATH = os.path.abspath(VECTORSTORE_PATH)
 
 
 
