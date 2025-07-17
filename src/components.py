@@ -271,6 +271,17 @@ def display_contact_llm_response(llm_response):
     """
     # LLMからの回答を表示
     st.markdown(llm_response["answer"])
+    # 🔹 結果の内省処理（結果件数をもとに補足表示）
+    # context（検索結果）に含まれる文書の数で判断
+    result_docs = llm_response.get("context", [])
+    result_count = len({doc.metadata.get("employee_id") for doc in result_docs if doc.metadata.get("type") == "employee"})
+
+    if result_count == 0:
+        st.warning("❌ 社員情報が見つかりませんでした。部署名や表現を見直すと結果が得られる可能性があります。")
+    elif result_count == 1:
+        st.info("⚠️ 該当者は1名だけでした。条件が適切かご確認ください。")
+    else:
+        st.success(f"✅ 条件に一致する社員が {result_count} 名見つかりました。")
 
     # ユーザーの質問・要望に適切な回答を行うための情報が、社内文書のデータベースに存在しなかった場合
     if llm_response["answer"] != ct.INQUIRY_NO_MATCH_ANSWER:

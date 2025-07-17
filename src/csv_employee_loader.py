@@ -21,6 +21,14 @@ class EmployeeCSVLoader:
 
         raise ValueError(f"部署に該当する列が見つかりません（候補: {possible_keys}）")
 
+    def _detect_employment_column(self, df):
+        """従業員区分（雇用形態）に該当する列を検出する"""
+        possible_keys = ["従業員区分", "雇用形態", "employment_type"]
+        for key in possible_keys:
+            if key in df.columns:
+                return key
+        return None  # 任意の列なので見つからなくてもエラーにしない
+
     def _create_summary_document(self, df, dept_col):
         """部署別の社員数サマリーをDocumentで返す"""
         dept_summary = df[dept_col].value_counts().to_dict()
@@ -36,7 +44,7 @@ class EmployeeCSVLoader:
             }
         )
 
-    def _create_employee_documents(self, df, dept_col):
+    def _create_employee_documents(self, df, dept_col, emp_col):
         """社員ごとのDocumentをリストで返す"""
         documents = []
         for idx, row in df.iterrows():
@@ -47,6 +55,9 @@ class EmployeeCSVLoader:
                 "department": row.get(dept_col, ""),
                 "employee_id": idx
             }
+            if emp_col:
+                metadata["employment_type"] = row.get(emp_col, "")
+
             documents.append(Document(
                 page_content=row_data,
                 metadata=metadata
@@ -60,13 +71,12 @@ class EmployeeCSVLoader:
             df.columns = df.columns.str.strip()
 
             dept_col = self._detect_department_column(df)
+            emp_col = self._detect_employment_column(df)
 
-            # ✅ サマリードキュメントを追加
             summary_doc = self._create_summary_document(df, dept_col)
             documents.append(summary_doc)
 
-            # ✅ 社員ドキュメントを追加
-            employee_docs = self._create_employee_documents(df, dept_col)
+            employee_docs = self._create_employee_documents(df, dept_col, emp_col)
             documents.extend(employee_docs)
 
         except Exception as e:

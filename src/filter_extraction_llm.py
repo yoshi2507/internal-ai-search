@@ -1,35 +1,38 @@
-# src/filter_extraction_llm.py
-
-from langchain_openai import ChatOpenAI
+import re
 import json
+from constants import EXTRACTION_SYSTEM_PROMPT
+from openai import OpenAI
 
-llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.2)
+# OpenAIクライアントの初期化（環境変数 OPENAI_API_KEY が必要）
+client = OpenAI()
 
-def extract_filters_from_text(user_input: str) -> dict:
+def extract_filters_from_text(question: str) -> dict:
     """
-    ユーザー入力から社員検索用フィルタ条件（部署、従業員区分など）を抽出する。
-
-    Args:
-        user_input (str): ユーザーの自然文入力
-
-    Returns:
-        dict: {"部署": ..., "従業員区分": ...}
+    ユーザーの質問文から検索用フィルタ（例: 部署、従業員区分）を抽出する
     """
-    prompt = f"""
-あなたは社員名簿検索に特化した社内AIアシスタントです。
-次のユーザー入力から、社員名簿.csv に存在する「部署」や「従業員区分」の値を特定してください。
-不明な場合は空欄のままで構いません。
-
-【入力】「{user_input}」
-
-【出力形式】
-{{"部署": "...", "従業員区分": "..."}}
-    """.strip()
+    prompt = EXTRACTION_SYSTEM_PROMPT + f"\n\n質問文: {question}"
 
     try:
-        response = llm.invoke(prompt).content
-        filters = json.loads(response)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "あなたはPythonで辞書形式のデータ抽出を専門とするアシスタントです。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+        raw_text = response.choices[0].message.content
+
+        # ```python ... ``` のコードブロックを取り除く
+        raw_text_clean = re.sub(r"```(?:json|python)?\n*([\s\S]+?)\n*```", r"\1", raw_text).strip()
+        filters = json.loads(raw_text_clean)
+
+        if not isinstance(filters, dict):
+            print("[ERROR] 抽出結果が辞書型ではありません。")
+            return {}
+
         return filters
+
     except Exception as e:
         print(f"[ERROR] フィルタ抽出失敗: {e}")
         return {}

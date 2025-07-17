@@ -156,6 +156,11 @@ def initialize_all_retrievers():
 
     print(f"\n[DEBUG] 登録された社員数（summary除く）: {employee_count}")
     print(f"[DEBUG] 登録された部署一覧: {sorted(departments)}")
+    print("\n[DEBUG] 最初の3人のemployeeドキュメント内容:")
+    employee_only_docs = [doc for doc in employee_docs if doc.metadata.get("type") == "employee"][:3]
+    for doc in employee_only_docs:
+        print(doc.page_content)
+        print(doc.metadata)
 
     if not found_hayashi:
         print("❌ 林 千代さんのレコードは employee_docs に見つかりませんでした。")

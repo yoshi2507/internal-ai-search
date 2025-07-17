@@ -14,7 +14,7 @@ from langchain_openai import ChatOpenAI
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 import constants as ct
-
+from filter_extraction_llm import extract_filters_from_text
 
 ############################################################
 # 設定関連
@@ -108,12 +108,10 @@ def get_llm_response(chat_message):
 
     # モードによってLLMから回答を取得する用のプロンプトを変更
     if st.session_state.mode == ct.ANSWER_MODE_1:
-        # モードが「社内文書検索」の場合のプロンプト
         question_answer_template = ct.SYSTEM_PROMPT_DOC_SEARCH
     else:
-        # モードが「社内問い合わせ」の場合のプロンプト
         question_answer_template = ct.SYSTEM_PROMPT_INQUIRY
-    # LLMから回答を取得する用のプロンプトテンプレートを作成
+
     question_answer_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", question_answer_template),
@@ -122,37 +120,58 @@ def get_llm_response(chat_message):
         ]
     )
 
-    # ✅ retriever を質問内容によって切り替える
+    # === retrieverを社員か文書かで切り替え ===
     if is_employee_query(chat_message):
-        department = extract_department_name(chat_message)
-        if department:
-            retriever = st.session_state.employee_retriever
+        retriever = st.session_state.employee_retriever
+
+        # 🔹 LLMでフィルタ抽出
+        filters = extract_filters_from_text(chat_message)
+
+        # ✅ フィルタキーのマッピング変換
+        key_mapping = {
+            "部署": "department",
+            "従業員区分": "employment_type"  # 今後の拡張を見据えて、英語に統一
+        }      
+        converted_filters = {key_mapping.get(k, k): v for k, v in filters.items() if v}
+
+        # 🔹 フィルタ条件を画面に表示（ユーザーに明示）
+        if filters:
+            st.markdown("#### 🧠 AIが抽出した検索条件")
+            for key, value in filters.items():
+                if value:
+                    st.markdown(f"- **{key}**: {value}")
+            st.markdown("（※条件が意図と違う場合は、修正して再入力してください）")
+
+            # 🔹 検索フィルタに反映
             retriever.search_kwargs["filter"] = {
-                "$and": [
-                    {"category": "employee"},
-                    {"department": department}
-                ]
+                "$and": [{"category": "employee"}] + [{k: v} for k, v in converted_filters.items()]
             }
-        else:
-            retriever = st.session_state.employee_retriever
+
+            # 🔍 フィルタ条件をデバッグ出力
+            print("[DEBUG] 設定された検索フィルタ:", retriever.search_kwargs["filter"])
     else:
         retriever = st.session_state.full_retriever
 
-
-        
     # retriever に基づいて chain を構築
     history_aware_retriever = create_history_aware_retriever(
         llm, retriever, question_generator_prompt
     )
 
-    # LLMから回答を取得する用のChainを作成
     question_answer_chain = create_stuff_documents_chain(llm, question_answer_prompt)
-    # 「RAG x 会話履歴の記憶機能」を実現するためのChainを作成
+
     chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
     # LLMへのリクエストとレスポンス取得
-    llm_response = chain.invoke({"input": chat_message, "chat_history": st.session_state.chat_history})
-    # LLMレスポンスを会話履歴に追加
-    st.session_state.chat_history.extend([HumanMessage(content=chat_message), llm_response["answer"]])
+    llm_response = chain.invoke({
+        "input": chat_message,
+        "chat_history": st.session_state.chat_history
+    })
+
+    # 会話履歴に追加
+    st.session_state.chat_history.extend([
+        HumanMessage(content=chat_message),
+        llm_response["answer"]
+    ])
 
     return llm_response
+
