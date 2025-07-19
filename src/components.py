@@ -15,62 +15,43 @@ import constants as ct
 ############################################################
 
 def display_app_title():
-    """
-    タイトル表示
-    """
     st.markdown(f"## {ct.APP_NAME}")
 
 
 def display_select_mode():
-    """
-    サイドバーに回答モードのラジオボタンと説明を表示
-    """
-    
     with st.sidebar:
         st.markdown("### 利用目的を選択してください")
 
-        # ✅ モード選択（初期化もここで行う）
         if "mode" not in st.session_state:
-            st.session_state.mode = ct.ANSWER_MODE_2  # デフォルトで「社内問い合わせ」
+            st.session_state.mode = ct.ANSWER_MODE_2
 
-        # ラジオボタンでモードを選択
         st.session_state.mode = st.radio(
             label="モード選択",
             options=[ct.ANSWER_MODE_1, ct.ANSWER_MODE_2],
-            index=1  # デフォルト選択（任意）
+            index=1
         )
 
-        # === 両モードの案内を常時表示 ===
         st.markdown("#### 【社内文書検索】を選択した場合")
         st.info("入力内容と関連性が高い社内文書のありかを検索できます。")
-        st.code("【入力例】\n社員の育成方針に関するMTGの議事録", wrap_lines=True, language=None)
+        st.code("【入力例】\n社員の育成方針に関するMTGの議事録")
 
         st.markdown("#### 【社内問い合わせ】を選択した場合")
         st.info("質問・要望に対して、社内文書の情報をもとに回答を得られます。")
-        st.code("【入力例】\n人事部に所属している従業員情報を一覧化して", wrap_lines=True, language=None)
-
+        st.code("【入力例】\n人事部に所属している従業員情報を一覧化して")
 
 
 def display_initial_ai_message():
-    """
-    初期メッセージ（中央） - 背景を薄緑で装飾
-    """
     with st.chat_message("assistant"):
-        st.markdown(
-            """
+        st.markdown("""
         <div style="background-color:#dff0d8; padding: 15px; border-radius: 8px; max-width: 680px;">
-                <span style="font-size: 16px; color: #3c763d;">
-                    こんにちは。私は社内文書の情報をもとに回答する生成AIチャットボットです。<br>
-                    サイドバーで利用目的を選択し、画面下部のチャット欄からメッセージを送信してください。
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+            <span style="font-size: 16px; color: #3c763d;">
+                こんにちは。私は社内文書の情報をもとに回答する生成AIチャットボットです。<br>
+                サイドバーで利用目的を選択し、画面下部のチャット欄からメッセージを送信してください。
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # ⚠️ 注意メッセージ（表示位置・大きさ揃え、テキスト風アイコン）
-    st.markdown(
-        """
+    st.markdown("""
         <div style="background-color:#fcf8e3; padding: 15px; border-radius: 8px; 
                     margin-left: 56px; margin-top: 5px; max-width: 680px;">
             <span style="font-size: 15px; color: #8a6d3b;">
@@ -78,28 +59,18 @@ def display_initial_ai_message():
                 具体的に入力したほうが期待通りの回答を得やすいです。
             </span>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
-    # ユーザーの入力との間にスペースを入れる
+    """, unsafe_allow_html=True)
+
     st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 
-def display_conversation_log():
-    """
-    会話ログの一覧表示（ユーザー発言もchat_messageで表示する構成）
-    """
-    for message in st.session_state.messages:
-        # 「message」辞書の中の「role」キーには「user」か「assistant」が入っている
 
+def display_conversation_log():
+    for message in st.session_state.messages:
         if message["role"] == "user":
-            # ✅ Streamlit標準のチャット形式（アイコン付き）
             with st.chat_message("user"):
                 st.markdown(message["content"])
-
         else:
-            # LLM（assistant）側のメッセージ（従来通り）
             with st.chat_message(message["role"]):
-
                 if message["content"]["mode"] == ct.ANSWER_MODE_1:
                     if not "no_file_path_flg" in message["content"]:
                         st.markdown(message["content"]["main_message"])
@@ -119,7 +90,6 @@ def display_conversation_log():
                                     st.info(f"{sub_choice['source']}", icon=icon)
                     else:
                         st.markdown(message["content"]["answer"])
-
                 else:
                     st.markdown(message["content"]["answer"])
 
@@ -260,79 +230,48 @@ def display_search_llm_response(llm_response):
 
 
 def display_contact_llm_response(llm_response):
-    """
-    「社内問い合わせ」モードにおけるLLMレスポンスを表示
-
-    Args:
-        llm_response: LLMからの回答
-
-    Returns:
-        LLMからの回答を画面表示用に整形した辞書データ
-    """
-    # LLMからの回答を表示
     st.markdown(llm_response["answer"])
-    # 🔹 結果の内省処理（結果件数をもとに補足表示）
-    # context（検索結果）に含まれる文書の数で判断
+
     result_docs = llm_response.get("context", [])
     result_count = len({doc.metadata.get("employee_id") for doc in result_docs if doc.metadata.get("type") == "employee"})
 
-    if result_count == 0:
-        st.warning("❌ 社員情報が見つかりませんでした。部署名や表現を見直すと結果が得られる可能性があります。")
-    elif result_count == 1:
-        st.info("⚠️ 該当者は1名だけでした。条件が適切かご確認ください。")
-    else:
-        st.success(f"✅ 条件に一致する社員が {result_count} 名見つかりました。")
+    last_input = st.session_state.get("last_user_message", "")
+    if utils.is_employee_query(last_input):
+        if result_count == 0:
+            st.warning("❌ 社員情報が見つかりませんでした。部署名や表現を見直すと結果が得られる可能性があります。")
+        elif result_count == 1:
+            st.info("⚠️ 該当者は1名だけでした。条件が適切かご確認ください。")
+        else:
+            st.success(f"✅ 条件に一致する社員が {result_count} 名見つかりました。")
 
-    # ユーザーの質問・要望に適切な回答を行うための情報が、社内文書のデータベースに存在しなかった場合
     if llm_response["answer"] != ct.INQUIRY_NO_MATCH_ANSWER:
-        # 区切り線を表示
         st.divider()
-
-        # 補足メッセージを表示
         message = "情報源"
         st.markdown(f"##### {message}")
 
-        # 参照元のファイルパスの一覧を格納するためのリストを用意
         file_path_list = []
         file_info_list = []
 
-        # LLMが回答生成の参照元として使ったドキュメントの一覧が「context」内のリストの中に入っているため、ループ処理
         for document in llm_response["context"]:
-            # ファイルパスを取得
             file_path = document.metadata["source"]
-            # ファイルパスの重複は除去
             if file_path in file_path_list:
                 continue
 
-            # ページ番号が取得できた場合のみ、ページ番号を表示（ドキュメントによっては取得できない場合がある）
             if "page" in document.metadata:
-                # ページ番号を取得
                 page_number = document.metadata["page"] + 1
-                # 「ファイルパス」と「ページ番号」
                 file_info = f"{file_path}（{page_number}ページ目）"
             else:
-                # 「ファイルパス」のみ
                 file_info = f"{file_path}"
 
-            # 参照元のありかに応じて、適したアイコンを取得
             icon = utils.get_source_icon(file_path)
-            # ファイル情報を表示
             st.info(file_info, icon=icon)
 
-            # 重複チェック用に、ファイルパスをリストに順次追加
             file_path_list.append(file_path)
-            # ファイル情報をリストに順次追加
             file_info_list.append(file_info)
 
-    # 表示用の会話ログに格納するためのデータを用意
-    # - 「mode」: モード（「社内文書検索」or「社内問い合わせ」）
-    # - 「answer」: LLMからの回答
-    # - 「message」: 補足メッセージ
-    # - 「file_path_list」: ファイルパスの一覧リスト
     content = {}
     content["mode"] = ct.ANSWER_MODE_2
     content["answer"] = llm_response["answer"]
-    # 参照元のドキュメントが取得できた場合のみ
     if llm_response["answer"] != ct.INQUIRY_NO_MATCH_ANSWER:
         content["message"] = message
         content["file_info_list"] = file_info_list

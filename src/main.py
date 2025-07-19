@@ -98,6 +98,7 @@ if chat_message:
     # ==========================================
     # ユーザーメッセージのログ出力
     logger.info({"message": chat_message, "application_mode": st.session_state.mode})
+    st.session_state["last_user_message"] = chat_message
 
     # ユーザーメッセージを表示
     with st.chat_message("user"):
